@@ -20,20 +20,20 @@ def read_data(url,filename):
     df = pd.read_csv(filename)
     return df
 
-def prep_state_death_histories():
+def prep_state_death_histories(covid_df,nat_covid_df):
     state_pops = pd.read_csv('nst-est2019-alldata.csv')
     postal_codes = pd.read_csv('postal_codes.csv')
 
     df = read_data('https://data.cdc.gov/api/views/xkkf-xrst/rows.csv?accessType=DOWNLOAD&bom=true&format=true%20target=','Excess_Deaths_Associated_with_COVID-19.csv')
     df = df[(df['Outcome']=='All causes') & (df['Type']=='Predicted (weighted)')]
     df = df.merge(postal_codes)
-    df['datetime'] = pd.to_datetime(df['Week Ending Date'], format='%m/%d/%Y')
-    df['year'] = pd.DatetimeIndex(df['datetime']).year
+    df['original_datetime'] = pd.to_datetime(df['Week Ending Date'], format='%m/%d/%Y')
+    df['year'] = pd.DatetimeIndex(df['original_datetime']).year
     df['days_into_year'] = 0
     df['population'] = 0
     years = df['year'].unique()
     for year in years:
-        df.loc[(df['year']==year,'days_into_year')] = pd.TimedeltaIndex(df.loc[(df['year']==year,'datetime')]-pd.datetime(year,1,1)).days
+        df.loc[(df['year']==year,'days_into_year')] = pd.TimedeltaIndex(df.loc[(df['year']==year,'original_datetime')]-pd.datetime(year,1,1)).days
         for state in df['State'].unique():
             pop_arr = state_pops.loc[(state_pops['NAME']==state),'POPESTIMATE'+str(year-1)]
             if len(pop_arr)>0:
@@ -41,12 +41,52 @@ def prep_state_death_histories():
 
     # annoyingly, NYC is not included in NY, and is instead presented separately
     # so go and add NYC back in to NY
-    for date in df['datetime'].unique():
-        df.loc[(df['State']=='New York') & (df['datetime']==date),'Observed Number'] += df.loc[(df['State']=='New York City') & (df['datetime']==date),'Observed Number'].values[0]
+    for date in df['original_datetime'].unique():
+        df.loc[(df['State']=='New York') & (df['original_datetime']==date),'Observed Number'] += df.loc[(df['State']=='New York City') & (df['original_datetime']==date),'Observed Number'].values[0]
 
     # convert raw weekly count into daily per 100,000 rate
     df['daily_deaths_per_hundred_thousand'] = df['Observed Number'] / 7. / df['population'] * 1e5
+
+    df['datetime'] = pd.to_datetime(2020*1000+df['days_into_year'], format='%Y%j')
     df.to_csv('us_death_trends.csv', columns=['datetime','year','days_into_year','State','Code','daily_deaths_per_hundred_thousand'], index=False)
+
+    # now find the 'normal' death rate
+    #   interpolate to daily sampling
+    #   avg the 2017-2019 data on a day-to-day basis
+    df_avg = pd.DataFrame(np.arange(1,366), columns=['days_into_year'])
+    for year in [2017,2018,2019]:
+        for state in df['Code'].unique():
+            dfsy =  df.loc[(df['Code']==state) & (df['year']==year)]
+            dfsyn = dfsy[['days_into_year','daily_deaths_per_hundred_thousand']]
+            dfsyn = dfsyn.rename(columns={'daily_deaths_per_hundred_thousand':state+'_'+str(year)})
+            dfsyn = dfsyn.set_index('days_into_year')
+            df_avg = df_avg.join(dfsyn)
+            #df_avg[state+'_'+str(year)] = df_avg[state+'_'+str(year)].interpolate()
+        df_avg = df_avg.interpolate()
+
+    #covid_df['typical_plus_covid_daily_deaths_per_hundred_thousand'] = np.nan
+    df_avg[state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'] = np.nan
+    df_avg['datetime'] = pd.to_datetime(2020*1000+df_avg.index+1, format='%Y%j')
+    for state in df['Code'].unique():
+        df_avg[state+'_daily_deaths_per_hundred_thousand'] = df_avg[[state+'_2017',state+'_2018',state+'_2019']].mean(axis=1)
+
+        # this probably isn't the most efficient way...
+        if state == 'US':
+            snat_covid_df = nat_covid_df.loc[(nat_covid_df['7day_avg_deaths_per_hundred_thousand'].notnull())]
+            for date in snat_covid_df['datetime'].values:
+                df_avg.loc[(df_avg['datetime']==date),state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'] = snat_covid_df.loc[(snat_covid_df['datetime']==date),'7day_avg_deaths_per_hundred_thousand'].values[0] + df_avg.loc[(df_avg['datetime']==date),state+'_daily_deaths_per_hundred_thousand'].values[0]
+        else:
+            scovid_df = covid_df.loc[(covid_df['state']==state) & (covid_df['7day_avg_deaths_per_hundred_thousand'].notnull())]
+            for date in scovid_df['datetime'].values:
+                df_avg.loc[(df_avg['datetime']==date),state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'] = scovid_df.loc[(scovid_df['datetime']==date),'7day_avg_deaths_per_hundred_thousand'].values[0] + df_avg.loc[(df_avg['datetime']==date),state+'_daily_deaths_per_hundred_thousand'].values[0]
+
+
+    #columns_to_print = [state+'_daily_deaths_per_hundred_thousand' for state in df['Code'].unique()]
+    #columns_to_print.extend([state+'_typical_plus_covid_daily_deaths_per_hundred_thousand' for state in df['Code'].unique()])
+    columns_to_print = [state+'_typical_plus_covid_daily_deaths_per_hundred_thousand' for state in df['Code'].unique()]
+    columns_to_print.append('datetime')
+    df_avg.to_csv('us_typical_deaths.csv', columns=columns_to_print, index_label='days_into_year')
+
 
 def plot_state_death_histories():
     import matplotlib.pyplot as plt
@@ -140,7 +180,7 @@ def state_pops():
     return df
 
 def prep_us_data():
-    state_df = read_data('https://covidtracking.com/api/v1/states/daily.csv','daily.csv')
+    state_df = read_data('https://covidtracking.com/api/v1/states/daily.csv','states_daily.csv')
     state_df['datetime'] = pd.to_datetime(state_df['date'], format='%Y%m%d')
     # state_df columns: 'date', 'state', 'positive', 'negative', 'pending',
     #    'hospitalizedCurrently', 'hospitalizedCumulative', 'inIcuCurrently',
@@ -166,6 +206,35 @@ def prep_us_data():
     #date = (max(state_dates)-start_of_2020).days
     state_df = state_df.replace([np.inf, -np.inf], np.nan)
     state_df.to_csv('us_data.csv', columns=['datetime','state','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
+    return state_df
+
+def prep_national_data():
+    us_pop = 328239523.
+    state_df = read_data('https://covidtracking.com/api/v1/us/daily.csv','us_daily.csv')
+    state_df['datetime'] = pd.to_datetime(state_df['date'], format='%Y%m%d')
+    # state_df columns: 'date', 'state', 'positive', 'negative', 'pending',
+    #    'hospitalizedCurrently', 'hospitalizedCumulative', 'inIcuCurrently',
+    #    'inIcuCumulative', 'onVentilatorCurrently', 'onVentilatorCumulative',
+    #    'recovered', 'hash', 'dateChecked', 'death', 'hospitalized', 'total',
+    #    'totalTestResults', 'posNeg', 'fips', 'deathIncrease',
+    #    'hospitalizedIncrease', 'negativeIncrease', 'positiveIncrease',
+    #    'totalTestResultsIncrease'
+    state_dates = state_df['datetime'].unique()
+    state_df['state'] = 'US'
+    state_df['cumulative_deaths_per_hundred_thousand'] = state_df['death'] / us_pop * 1e5
+    state_df['cumulative_cases_per_hundred_thousand'] = state_df['positive'] / us_pop * 1e5
+    state_df['7day_avg_deaths_per_hundred_thousand'] = state_df['deathIncrease'].rolling(window=7, win_type='boxcar').mean().shift(-6) / us_pop * 1e5   # shift is to effectively reverse the direction of the rolling mean
+    state_df['7day_avg_cases_per_hundred_thousand'] = state_df['positiveIncrease'].rolling(window=7, win_type='boxcar').mean().shift(-6) / us_pop * 1e5   # shift is to effectively reverse the direction of the rolling mean
+    fields = ['cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand']
+    for field in fields:
+        state_df['log_'+field] = np.log10(state_df[field])
+        state_df[field] = state_df[field].round(2)
+    #date = (max(state_dates)-start_of_2020).days
+    state_df = state_df.replace([np.inf, -np.inf], np.nan)
+    state_df.to_csv('national_data.csv', columns=['datetime','state','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
+    return state_df
 
 if __name__ == '__main__':
-    prep_us_data()
+    covid_df = prep_us_data()
+    nat_covid_df = prep_national_data()
+    prep_state_death_histories(covid_df, nat_covid_df)
