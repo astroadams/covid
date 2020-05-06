@@ -11,29 +11,59 @@ import numpy as np
 from datetime import datetime, timedelta
 
 
-def gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,field, hover_data):
+def gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,field):
     df = state_df
+    if scaling == 'linear':
+        column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
+        axis_type = 'linear'
+        ymin = 0
+        ymax = df[column_string].max()*1.1
+    else:
+        column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
+        axis_type = 'log'
+        ymin = np.log10(df[column_string].min())
+        ymax = np.log10(df[column_string].max()*1.1)
+    if field == 'deaths': field_string = 'Deaths'
+    else: field_string = 'Cases'
+    if current_vs_cumulative == 'cumulative': 
+        #title_string = f'Cumulative {field_string} per 100,000 people'
+        ylabel = f'Cumulative {field_string} per 100,000'
+    else:
+        #title_string = f'Average Daily {field_string} per 100,000 people over last week'
+        ylabel = f'Average Daily {field_string} per 100,000'
+    data = []
+    for state in df['state'].unique():
+        dfs = df[df['state']==state]
+        data.append(go.Scatter(x=dfs['datetime'], y=dfs[column_string], line=dict(color='black', width=0.1), opacity=0.8, showlegend=False, name=state))
+    layout = go.Layout(
+            hovermode='closest', 
+            xaxis={"title":"Days since start of 2020", "range":["2020-03-01","2020-05-05"]}, 
+            yaxis={"title":ylabel, "type":axis_type, "range":[ymin,ymax]}
+        )
+    return {"data" : data, "layout" : layout}
+
+def update_state_trend_plot(hover_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field):
     try:
         GUI_state = hover_data['points'][0]['location']
     except:
-        GUI_state = ''
-    data = []
-    
-    for state in df['state'].unique():
-        dfs = df[df['state']==state]
-        if state == GUI_state: opacity = 1
-        else: opacity = 0.2
-        if scaling == 'linear':
-            column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
-        else:
-            column_string = 'log_'+current_vs_cumulative+'_'+field+'_per_hundred_thousand'
-        data.append(go.Scatter(x=dfs['datetime'], y=dfs[column_string], mode='lines', name=state, opacity=opacity))
-    layout = go.Layout(hovermode='closest', xaxis={"title":"Days since start of 2020"})
-    return {"data" : data, "layout" : layout}
+        return original_figure
+    data = original_figure['data']
+    df = state_df
+    dfs = df[df['state']==GUI_state]
+    if scaling == 'linear':
+        column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
+        ymin = 0
+        ymax = df[column_string].max()*1.1
+    else:
+        column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
+        ymin = np.log10(df[column_string].min())
+        ymax = np.log10(df[column_string].max()*1.1)
+    data.append(go.Scatter(x=dfs['datetime'], y=dfs[column_string], line=dict(color='black', width=1), opacity=1, name=GUI_state))
+    selected_date = (pd.datetime(2020,1,1)+timedelta(days=days_since_start_of_2020)).strftime('%Y-%m-%d')
+    data.append(go.Scatter(x=[selected_date,selected_date], y=[ymin,ymax], line=dict(color='blue', width=2), opacity=0.2, name=selected_date, mode='lines'))
+    return {"data" : data, "layout" : original_figure['layout']}
 
 def gen_map(date,geography,scaling,current_vs_cumulative,field):
-    # TODO: PROBLEM WITH TIME-FILTER!!!!!!!!!
-    #datestring = int((start_of_2020+timedelta(days=date)).strftime('%Y-%m-%d'))
     datestring = (start_of_2020+timedelta(days=date)).strftime('%Y-%m-%d')
     if geography == 'states': 
         df = state_df[state_df['datetime']==datestring]
@@ -112,6 +142,7 @@ if support_states:
     state_df = pd.read_csv('us_data.csv')
 if support_history:
     history_df = pd.read_csv('us_death_trends.csv')
+    typical_df = pd.read_csv('us_typical_deaths.csv')
 
 state_dates = state_df['datetime'].unique()
 
@@ -201,14 +232,12 @@ app.layout = html.Div(
             ]
         ),
         html.Div([
-            html.P("State trends: Hovering over a state on the map above will highlight the state in the figure below."),
-            dcc.Graph(
-                id='state-trends'
-                #figure=gen_state_trend_plot(radio, '')
-            ),
-            dcc.Graph(
-                id='state-history'
-            )
+            html.P("Hovering over a state on the map will bring up details on that state in the two figures below.  The lower left figure shows the history of the selected quantity (cases or deaths, cumulatively or daily averages over the last week).  The lower right figure shows the (total) death rates (from all causes) throughout the calendar year for the selected state with 2020 in red and 2017, 2018, and 2019 in gray.  The green line is the average of the 2017-2019 death rates + reported Covid fatalities.  Both figures include a vertical blue line indicating the date of the data being displayed in the map above."),
+        ]),
+        html.Div([
+            dcc.Store(id='state-trends-stash'),
+            dcc.Graph(id='state-trends'),
+            dcc.Graph(id='state-history')
         ], style={'columnCount': 2})
     ]
 )
@@ -261,17 +290,68 @@ def update_field_options(geography):
         ]  
     return options
 
-@app.callback(Output("state-trends", "figure"), 
+@app.callback(Output("state-trends-stash", "data"), 
     [
         Input("date-slider", "value"), 
         Input("radio-scaling", "value"),
         Input("radio-current-vs-cumulative", "value"),
-        Input("radio-field", "value"),
-        Input("choropleth", "hoverData")
+        Input("radio-field", "value")
     ]
 )
-def update_state_trends(days_since_start_of_2020,scaling,current_vs_cumulative,field, hover_data):
-    return gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,field, hover_data)
+def update_state_trends(days_since_start_of_2020,scaling,current_vs_cumulative,field):
+    return gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,field)
+
+# @app.callback(Output("state-trends", "figure"), [Input("state-trends-stash", "data")])
+# def plot_state_trends(figure):
+#     return figure
+
+@app.callback(Output("state-trends", "figure"), 
+    [Input("choropleth", "hoverData"), Input("state-trends-stash", "data")],
+    [    
+        State("choropleth", "figure"), 
+        State("date-slider", "value"), 
+        State("radio-scaling", "value"),
+        State("radio-current-vs-cumulative", "value"),
+        State("radio-field", "value"),
+    ]
+)
+def hover_update_state_trends(hover_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field):
+    return update_state_trend_plot(hover_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field)
+
+@app.callback(Output("state-history", "figure"), [Input("choropleth", "hoverData"), Input("date-slider", "value")])
+def gen_state_history_plot(hover_data,date):
+    #todays_date = pd.datetime(2020,5,3)
+    #days_into_year = (todays_date - pd.datetime(2020,1,1)).days
+    #lockdown = (pd.datetime(2020,3,11) - pd.datetime(2020,1,1)).days
+    selected_date = (pd.datetime(2020,1,1)+timedelta(days=date))
+    try:
+        state = hover_data['points'][0]['location']
+    except:
+        state = 'US'
+
+    df = history_df
+    data = []
+    for year in [2017,2018,2019,2020]:
+        sdff = df[(df['year']==year) & (df['Code']==state)]
+        #sdff = dff.sort_values(by='days_into_year')
+        if year == 2020:
+            if (state in ['AK','CT','LA','NC','OH','VA','WV']):
+                trim = -5
+            else:
+                trim = -2
+            color='red'
+        else:
+            color='gray'
+            trim = -1
+        #data.append(go.Scatter(x=sdff['datetime'].values[0:trim], y=sdff['daily_deaths_per_hundred_thousand'].values[0:trim], mode='lines', line=dict(color=color), name=year))
+        data.append(go.Scatter(x=sdff['days_into_year'].values[0:trim], y=sdff['daily_deaths_per_hundred_thousand'].values[0:trim], mode='lines', line=dict(color=color), name=year))
+    #data.append(go.Scatter(x=[selected_date,selected_date], y=[0,10], line=dict(color='blue', width=2), opacity=0.2, mode='lines', name=selected_date.strftime('%Y-%m-%d')))
+    data.append(go.Scatter(x=[date,date], y=[0,10], line=dict(color='blue', width=2), opacity=0.2, mode='lines', name=selected_date.strftime('%Y-%m-%d')))
+    #data.append(go.Scatter(x=typical_df['datetime'], y=typical_df[state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'], mode='lines', line=dict(color='green'), name='Covid'))
+    data.append(go.Scatter(x=typical_df.index, y=typical_df[state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'], mode='lines', line=dict(color='green'), name='Covid'))
+    #layout = go.Layout(xaxis={"title":"Date"}, yaxis={"title":"Daily Deaths per 100,000 People\nin "+state, "range":[0,10]})
+    layout = go.Layout(xaxis={"title":"Day of the Year"}, yaxis={"title":"Daily Deaths per 100,000 People\nin "+state, "range":[0,10]})
+    return {"data" : data, "layout" : layout}
 
 if __name__ == '__main__':
     app.run_server(debug=True)
