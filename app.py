@@ -27,17 +27,17 @@ def gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,
     else: field_string = 'Cases'
     if current_vs_cumulative == 'cumulative': 
         #title_string = f'Cumulative {field_string} per 100,000 people'
-        ylabel = f'Cumulative {field_string} per 100,000'
+        ylabel = f'Cumulative Covid {field_string} per 100,000'
     else:
         #title_string = f'Average Daily {field_string} per 100,000 people over last week'
-        ylabel = f'Average Daily {field_string} per 100,000'
+        ylabel = f'Average Daily Covid {field_string} per 100,000'
     data = []
     for state in df['state'].unique():
         dfs = df[df['state']==state]
         data.append(go.Scatter(x=dfs['datetime'], y=dfs[column_string], line=dict(color='black', width=0.1), opacity=0.8, showlegend=False, name=state))
     layout = go.Layout(
             hovermode='closest', 
-            xaxis={"title":"Days since start of 2020", "range":["2020-03-01","2020-05-05"]}, 
+            xaxis={"title":"Date", "range":["2020-03-01","2020-05-05"]}, 
             yaxis={"title":ylabel, "type":axis_type, "range":[ymin,ymax]}
         )
     return {"data" : data, "layout" : layout}
@@ -267,9 +267,9 @@ def update_map_title(days_since_start_of_2020,current_vs_cumulative,field):
     if field == 'deaths': field_string = 'Deaths Reported'
     else: field_string = 'Cases Reported'
     if current_vs_cumulative == 'cumulative': 
-        title_string = f'Cumulative {field_string} per 100,000 people'
+        title_string = f'Cumulative Covid-19 {field_string} per 100,000 people'
     else:
-        title_string = f'Average Daily {field_string} per 100,000 people over last week'
+        title_string = f'Average Daily Covid-19 {field_string} per 100,000 people over last week'
     return f"{title_string} as of {date_string}"
 
 @app.callback(Output("radio-field", "options"), [Input("radio-geography", "value")])
