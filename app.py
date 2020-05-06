@@ -85,6 +85,19 @@ def gen_map(date,geography,scaling,current_vs_cumulative,field):
     #         color = current_vs_cumulative+'_'+field+'_per_hundred_thousand',
     #         locationmode = locationmode,
     #         scope="usa")
+    # cmin = np.min(df[column_string])
+    # cmax = np.max(df[column_string])
+    # cvals = np.linspace(cmin,cmax,8)
+    # if scaling == 'log':
+    #     ctext = (10**cvals).round(2)
+    #     cvals = np.log10(ctext)
+    # else:
+    #     ctext = cvals.round(2)
+    #     cvals = ctext
+    if scaling == 'log':
+        tickprefix = '10^'
+    else:
+        tickprefix = ''
     data = [go.Choropleth(
             locations = df['state'],
             z = df[column_string],
@@ -95,9 +108,11 @@ def gen_map(date,geography,scaling,current_vs_cumulative,field):
             reversescale = True, 
             #zmid = 0,
             zmin = min_value,
-            zmax = max_value
-            #text = df[df['year']==year][radio+' text'],
-            #hoverinfo='location+text',
+            zmax = max_value,
+            text = df[column_string.replace("log_","")],
+            hoverinfo='location+text',
+            #colorbar = go.choropleth.ColorBar(tickmode='array', tickvals=cvals, ticktext=ctext)
+            colorbar = go.choropleth.ColorBar(tickprefix=tickprefix)
             #colorbar = go.choropleth.ColorBar(
             #    title = radio, tickvals=[-30,-20,-10,0,10,20,30], 
             #    ticktext=['R+30'+extra_space,'R+20'+extra_space,'R+10'+extra_space,'Even'+extra_space,'D+10'+extra_space,'D+20'+extra_space,'D+30'+extra_space]))]
