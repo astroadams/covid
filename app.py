@@ -37,7 +37,7 @@ def gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,
         data.append(go.Scatter(x=dfs['datetime'], y=dfs[column_string], line=dict(color='black', width=0.1), opacity=0.8, showlegend=False, name=state))
     layout = go.Layout(
             hovermode='closest', 
-            xaxis={"title":"Date", "range":["2020-03-01","2020-05-05"]}, 
+            xaxis={"title":"Date", "range":["2020-03-01",str(df['datetime'])]}, 
             yaxis={"title":ylabel, "type":axis_type, "range":[ymin,ymax]}
         )
     return {"data" : data, "layout" : layout}
