@@ -234,7 +234,16 @@ def prep_national_data():
     state_df.to_csv('national_data.csv', columns=['datetime','state','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
     return state_df
 
+def read_UID_codes():
+    return pd.read_csv('UID_ISO_FIPS_LookUp_Table.csv')
+
+def prep_county_data():
+    county_deaths_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv','time_series_covid19_deaths_US.csv')
+    county_cases_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv','time_series_covid19_confirmed_US.csv')
+    print('a work in progress...')
+
 if __name__ == '__main__':
     covid_df = prep_us_data()
     nat_covid_df = prep_national_data()
     prep_state_death_histories(covid_df, nat_covid_df)
+    prep_county_data()
