@@ -241,6 +241,11 @@ def prep_county_data():
     county_deaths_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv','time_series_covid19_deaths_US.csv')
     county_cases_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv','time_series_covid19_confirmed_US.csv')
     print('a work in progress...')
+    uids = county_cases_df['UID'].unique()
+    uid_raw = county_deaths_df.loc[county_deaths_df['UID']==uids[0],[column.endswith('20') for column in county_deaths_df.columns]].transpose()
+    uid_raw = uid_raw.rename(columns={0:"deaths"})
+    uid_raw['UID'] = uids[0]
+    # TODO: add population, per capita, rolling average
 
 if __name__ == '__main__':
     covid_df = prep_us_data()
