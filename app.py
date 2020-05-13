@@ -26,10 +26,8 @@ def gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,
     if field == 'deaths': field_string = 'Deaths'
     else: field_string = 'Cases'
     if current_vs_cumulative == 'cumulative': 
-        #title_string = f'Cumulative {field_string} per 100,000 people'
         ylabel = f'Cumulative Covid {field_string} per 100,000'
     else:
-        #title_string = f'Average Daily {field_string} per 100,000 people over last week'
         ylabel = f'Average Daily Covid {field_string} per 100,000'
     data = []
     for state in df['state'].unique():
@@ -42,14 +40,24 @@ def gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,
         )
     return {"data" : data, "layout" : layout}
 
-def update_state_trend_plot(hover_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field):
-    try:
-        GUI_state = hover_data['points'][0]['location']
-    except:
-        return original_figure
+def update_state_trend_plot(hover_data,selected_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field):
+    if selected_data != None:
+        #GUI_states = selected_data['points']
+        GUI_states = [item['location'] for item in selected_data['points']]
+    elif hover_data != None:
+        GUI_states = [item['location'] for item in hover_data['points']]
+    else:
+        # TODO: change national data to append to state data, then just select national data here
+        #return original_figure
+        GUI_states = ['US']
+    #try:
+    #    GUI_state = hover_data['points'][0]['location']
+    #except:
+    #    return original_figure
     data = original_figure['data']
     df = state_df
-    dfs = df[df['state']==GUI_state]
+    #dfs = df[df['state']==GUI_state]
+    dfs = df[df['state'].isin(GUI_states)]
     if scaling == 'linear':
         column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
         ymin = 0
@@ -58,6 +66,17 @@ def update_state_trend_plot(hover_data,original_figure,current_figure,days_since
         column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
         ymin = np.log10(df[column_string].min())
         ymax = np.log10(df[column_string].max()*1.1)
+    if len(GUI_states)>1:
+        number = column_string.replace('_per_hundred_thousand','')
+        dfs[number] = dfs[column_string] * dfs['population'] / 1e5
+        region_value = dfs.groupby(['datetime'])[number].sum()
+        df_new = region_value.to_frame()
+        df_new['population'] = dfs.groupby(['datetime'])['population'].sum()
+        df_new[column_string] = df_new[number] / df_new['population'] * 1e5
+        dfs = df_new.reset_index()
+        GUI_state = 'Selected'
+    else:
+        GUI_state = GUI_states[0]
     data.append(go.Scatter(x=dfs['datetime'], y=dfs[column_string], line=dict(color='black', width=1), opacity=1, name=GUI_state))
     selected_date = (pd.datetime(2020,1,1)+timedelta(days=days_since_start_of_2020)).strftime('%Y-%m-%d')
     data.append(go.Scatter(x=[selected_date,selected_date], y=[ymin,ymax], line=dict(color='blue', width=2), opacity=0.2, name=selected_date, mode='lines'))
@@ -65,70 +84,78 @@ def update_state_trend_plot(hover_data,original_figure,current_figure,days_since
 
 def gen_map(date,geography,scaling,current_vs_cumulative,field):
     datestring = (start_of_2020+timedelta(days=date)).strftime('%Y-%m-%d')
+    if scaling == 'linear':
+        column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
+    else:
+        column_string = 'log_'+current_vs_cumulative+'_'+field+'_per_hundred_thousand'
     if geography == 'states': 
         df = state_df[state_df['datetime']==datestring]
         locationmode = 'USA-states'
         projection = 'albers usa'
-        if scaling == 'linear':
-            column_string = current_vs_cumulative+'_'+field+'_per_hundred_thousand'
-        else:
-            column_string = 'log_'+current_vs_cumulative+'_'+field+'_per_hundred_thousand'
+        locations = df['state']
         max_value = state_df[column_string].max()
         min_value = state_df[column_string].min()
-    elif geography == 'counties': df = county_df
-    elif geography == 'world': df = ''
+    elif geography == 'world': 
+        df = world_df[(world_df['datetime']==datestring) & (world_df[column_string].notnull())]
+        locations = df['location']
+        locationmode = 'ISO-3'
+        projection = 'equirectangular'
+        max_value = world_df[column_string].max()
+        min_value = world_df[column_string].min()
+    elif geography == 'counties': 
+        df = county_df[county_df['datetime']==datestring]
+        #locationmode = 'UID'
+        locationmode = 'geojson-id'
+        geojson = counties
+        projection = 'albers usa'
+        locations = df['FIPS']
+        max_value = county_df[column_string].max()
+        min_value = county_df[column_string].min()
     else:
         raise ValueError('Unrecognized geography %s' % (geography))
-    # figure = px.choropleth(
-    #         data_frame = df,
-    #         locations = 'state',
-    #         color = current_vs_cumulative+'_'+field+'_per_hundred_thousand',
-    #         locationmode = locationmode,
-    #         scope="usa")
-    # cmin = np.min(df[column_string])
-    # cmax = np.max(df[column_string])
-    # cvals = np.linspace(cmin,cmax,8)
-    # if scaling == 'log':
-    #     ctext = (10**cvals).round(2)
-    #     cvals = np.log10(ctext)
-    # else:
-    #     ctext = cvals.round(2)
-    #     cvals = ctext
     if scaling == 'log':
         tickprefix = '10^'
     else:
         tickprefix = ''
-    data = [go.Choropleth(
-            locations = df['state'],
-            z = df[column_string],
-            locationmode = 'USA-states',
-            colorscale = 'RdBu',
-            #autocolorscale=False,
-            #colorbar_title=current_vs_cumulative+' '+field+' per_hundred_thousand'
-            reversescale = True, 
-            #zmid = 0,
-            zmin = min_value,
-            zmax = max_value,
-            text = df[column_string.replace("log_","")],
-            hoverinfo='location+text',
-            #colorbar = go.choropleth.ColorBar(tickmode='array', tickvals=cvals, ticktext=ctext)
-            colorbar = go.choropleth.ColorBar(tickprefix=tickprefix)
-            #colorbar = go.choropleth.ColorBar(
-            #    title = radio, tickvals=[-30,-20,-10,0,10,20,30], 
-            #    ticktext=['R+30'+extra_space,'R+20'+extra_space,'R+10'+extra_space,'Even'+extra_space,'D+10'+extra_space,'D+20'+extra_space,'D+30'+extra_space]))]
-            )]
+    if geography == 'states' or geography == 'world':
+        data = [go.Choropleth(
+                locations = locations,
+                z = df[column_string],
+                locationmode = locationmode,
+                colorscale = 'RdBu',
+                reversescale = True, 
+                zmin = min_value,
+                zmax = max_value,
+                text = df[column_string.replace("log_","")],
+                hoverinfo='location+text',
+                colorbar = go.choropleth.ColorBar(tickprefix=tickprefix),
+                marker_line_color = 'white'
+                )]
+    else:
+        data = [px.choropleth(
+                df,
+                geojson=counties,
+                locations = 'FIPS',
+                color = column_string,
+                color_continuous_scale = 'RdBu',
+                #reversescale = True, 
+                range_color = (min_value, max_value),
+                scope = "usa"
+                #text = df[column_string.replace("log_","")],
+                #hoverinfo='location+text',
+                #colorbar = go.choropleth.ColorBar(tickprefix=tickprefix),
+                #marker_line_color = 'white'
+                )]        
     layout = go.Layout(
-        #title = go.layout.Title(
-        #    text = '2016 Presidential Election'
-        #),
         geo = go.layout.Geo(
             showframe = False,
             showcoastlines = False,
             projection = go.layout.geo.Projection(
-                type = 'albers usa'
+                type = projection
             )
         ),
-        height=550
+        height=550,
+        clickmode = 'event+select'
     )
     figure={
         'data': data,
@@ -140,19 +167,24 @@ start_of_2020 = datetime(2020,1,1)
 support_counties = False
 support_states = True
 support_history = True
+support_countries = True
 
 if support_counties:
     # get shapes of county outlines
-    counties = pd.read_json('geojson-counties-fips.json')
+    #counties = pd.read_json('geojson-counties-fips.json')
+    with open('geojson-counties-fips.json') as f:
+        counties = json.load(f)
     # # read county-level data
     # county_df = read_data('https://raw.githubusercontent.com/nytimes/covid-19-data/master/','us-counties.csv')
     # county_df['datetime'] = pd.to_datetime(county_df['date'])
     # # county_df columns: date, datetime, county, state, fips, cases, deaths
     # county_dates = county_df['datetime'].unique()
-    jh_death_data = pd.read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/','time_series_covid19_deaths_US.csv')
-    jh_case_data = pd.read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/','time_series_covid19_confirmed_US.csv')
+    #jh_death_data = pd.read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/','time_series_covid19_deaths_US.csv')
+    #jh_case_data = pd.read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/','time_series_covid19_confirmed_US.csv')
+    county_df = pd.read_csv('counties.csv')
 
-
+if support_countries:
+    world_df = pd.read_csv('countries.csv')
 if support_states:
     state_df = pd.read_csv('us_data.csv')
 if support_history:
@@ -161,7 +193,7 @@ if support_history:
 
 state_dates = state_df['datetime'].unique()
 
-geography = 'counties'
+geography = 'world'
 current_vs_cumulative = 'cumulative'
 field = 'deaths'
 scaling = 'log'
@@ -228,7 +260,7 @@ app.layout = html.Div(
                     id="radio-geography",
                     options=[
                         {'label': 'US States', 'value': 'states'},
-                        #{'label': 'US Counties', 'value': 'counties'},
+                        #{'label': 'US Counties', 'value': 'counties'}
                         #{'label': 'World', 'value': 'world'}
                     ],
                     value='states'
@@ -308,37 +340,58 @@ def update_field_options(geography):
 @app.callback(Output("state-trends-stash", "data"), 
     [
         Input("date-slider", "value"), 
+        Input("radio-geography", "value"),
         Input("radio-scaling", "value"),
         Input("radio-current-vs-cumulative", "value"),
         Input("radio-field", "value")
     ]
 )
-def update_state_trends(days_since_start_of_2020,scaling,current_vs_cumulative,field):
-    return gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,field)
+def update_state_trends(days_since_start_of_2020,geography,scaling,current_vs_cumulative,field):
+    if geography == 'states':
+        return gen_state_trend_plot(days_since_start_of_2020,scaling,current_vs_cumulative,field)
 
 # @app.callback(Output("state-trends", "figure"), [Input("state-trends-stash", "data")])
 # def plot_state_trends(figure):
 #     return figure
 
 @app.callback(Output("state-trends", "figure"), 
-    [Input("choropleth", "hoverData"), Input("state-trends-stash", "data")],
+    [
+        Input("choropleth", "hoverData"), 
+        Input("choropleth", "selectedData"), 
+        Input("state-trends-stash", "data")
+    ],
     [    
         State("choropleth", "figure"), 
         State("date-slider", "value"), 
+        State("radio-geography", "value"),
         State("radio-scaling", "value"),
         State("radio-current-vs-cumulative", "value"),
         State("radio-field", "value"),
     ]
 )
-def hover_update_state_trends(hover_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field):
-    return update_state_trend_plot(hover_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field)
+def hover_update_state_trends(hover_data,selected_data,original_figure,current_figure,days_since_start_of_2020,geography,scaling,current_vs_cumulative,field):
+    if geography == 'states':
+        return update_state_trend_plot(hover_data,selected_data,original_figure,current_figure,days_since_start_of_2020,scaling,current_vs_cumulative,field)
 
-@app.callback(Output("state-history", "figure"), [Input("choropleth", "hoverData"), Input("date-slider", "value")])
-def gen_state_history_plot(hover_data,date):
+@app.callback(Output("state-history", "figure"), [Input("choropleth", "hoverData"), Input("choropleth", "selectedData"), Input("date-slider", "value"), Input("radio-geography", "value")])
+def gen_state_history_plot(hover_data, selected_data, date, geography):
+    if geography != 'states':
+        return {"data" : [], "layout": []}
     #todays_date = pd.datetime(2020,5,3)
     #days_into_year = (todays_date - pd.datetime(2020,1,1)).days
     #lockdown = (pd.datetime(2020,3,11) - pd.datetime(2020,1,1)).days
     selected_date = (pd.datetime(2020,1,1)+timedelta(days=date))
+
+    # if selected_data != None:
+    #     #GUI_states = selected_data['points']
+    #     GUI_states = [item['location'] for item in selected_data['points']]
+    # elif hover_data != None:
+    #     GUI_states = [item['location'] for item in hover_data['points']]
+    # else:
+    #     # TODO: change national data to append to state data, then just select national data here
+    #     #return original_figure
+    #     GUI_states = ['US']
+
     try:
         state = hover_data['points'][0]['location']
     except:

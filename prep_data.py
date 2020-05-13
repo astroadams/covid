@@ -3,6 +3,7 @@ import os
 import time
 import requests
 import numpy as np
+from copy import copy
 
 def download_data(url,filename):
     age_hours = 10
@@ -20,11 +21,13 @@ def read_data(url,filename):
     df = pd.read_csv(filename)
     return df
 
-def prep_state_death_histories(covid_df,nat_covid_df):
+def prep_state_death_histories(covid_df):
     state_pops = pd.read_csv('nst-est2019-alldata.csv')
     postal_codes = pd.read_csv('postal_codes.csv')
 
-    df = read_data('https://data.cdc.gov/api/views/xkkf-xrst/rows.csv?accessType=DOWNLOAD&bom=true&format=true%20target=','Excess_Deaths_Associated_with_COVID-19.csv')
+    #df = read_data('https://data.cdc.gov/api/views/xkkf-xrst/rows.csv?accessType=DOWNLOAD&bom=true&format=true%20target=','Excess_Deaths_Associated_with_COVID-19.csv')
+    #df2 = read_data('https://data.cdc.gov/resource/r8kw-7aab.csv','Excess_Deaths_Associated_with_COVID-19_v2.csv')
+    df = pd.read_csv('Excess_Deaths_Associated_with_COVID-19.csv')
     df = df[(df['Outcome']=='All causes') & (df['Type']=='Predicted (weighted)')]
     df = df.merge(postal_codes)
     df['original_datetime'] = pd.to_datetime(df['Week Ending Date'], format='%m/%d/%Y')
@@ -71,14 +74,14 @@ def prep_state_death_histories(covid_df,nat_covid_df):
         df_avg[state+'_daily_deaths_per_hundred_thousand'] = df_avg[[state+'_2017',state+'_2018',state+'_2019']].mean(axis=1)
 
         # this probably isn't the most efficient way...
-        if state == 'US':
-            snat_covid_df = nat_covid_df.loc[(nat_covid_df['7day_avg_deaths_per_hundred_thousand'].notnull())]
-            for date in snat_covid_df['datetime'].values:
-                df_avg.loc[(df_avg['datetime']==date),state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'] = snat_covid_df.loc[(snat_covid_df['datetime']==date),'7day_avg_deaths_per_hundred_thousand'].values[0] + df_avg.loc[(df_avg['datetime']==date),state+'_daily_deaths_per_hundred_thousand'].values[0]
-        else:
-            scovid_df = covid_df.loc[(covid_df['state']==state) & (covid_df['7day_avg_deaths_per_hundred_thousand'].notnull())]
-            for date in scovid_df['datetime'].values:
-                df_avg.loc[(df_avg['datetime']==date),state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'] = scovid_df.loc[(scovid_df['datetime']==date),'7day_avg_deaths_per_hundred_thousand'].values[0] + df_avg.loc[(df_avg['datetime']==date),state+'_daily_deaths_per_hundred_thousand'].values[0]
+        #if state == 'US':
+        #    snat_covid_df = nat_covid_df.loc[(nat_covid_df['7day_avg_deaths_per_hundred_thousand'].notnull())]
+        #    for date in snat_covid_df['datetime'].values:
+        #        df_avg.loc[(df_avg['datetime']==date),state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'] = snat_covid_df.loc[(snat_covid_df['datetime']==date),'7day_avg_deaths_per_hundred_thousand'].values[0] + df_avg.loc[(df_avg['datetime']==date),state+'_daily_deaths_per_hundred_thousand'].values[0]
+        #else:
+        scovid_df = covid_df.loc[(covid_df['state']==state) & (covid_df['7day_avg_deaths_per_hundred_thousand'].notnull())]
+        for date in scovid_df['datetime'].values:
+            df_avg.loc[(df_avg['datetime']==date),state+'_typical_plus_covid_daily_deaths_per_hundred_thousand'] = scovid_df.loc[(scovid_df['datetime']==date),'7day_avg_deaths_per_hundred_thousand'].values[0] + df_avg.loc[(df_avg['datetime']==date),state+'_daily_deaths_per_hundred_thousand'].values[0]
 
 
     #columns_to_print = [state+'_daily_deaths_per_hundred_thousand' for state in df['Code'].unique()]
@@ -205,7 +208,7 @@ def prep_us_data():
         state_df[field] = state_df[field].round(2)
     #date = (max(state_dates)-start_of_2020).days
     state_df = state_df.replace([np.inf, -np.inf], np.nan)
-    state_df.to_csv('us_data.csv', columns=['datetime','state','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
+    #state_df.to_csv('us_data.csv', columns=['datetime','state','population','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
     return state_df
 
 def prep_national_data():
@@ -225,30 +228,86 @@ def prep_national_data():
     state_df['cumulative_cases_per_hundred_thousand'] = state_df['positive'] / us_pop * 1e5
     state_df['7day_avg_deaths_per_hundred_thousand'] = state_df['deathIncrease'].rolling(window=7, win_type='boxcar').mean().shift(-6) / us_pop * 1e5   # shift is to effectively reverse the direction of the rolling mean
     state_df['7day_avg_cases_per_hundred_thousand'] = state_df['positiveIncrease'].rolling(window=7, win_type='boxcar').mean().shift(-6) / us_pop * 1e5   # shift is to effectively reverse the direction of the rolling mean
+    state_df['population'] = us_pop
     fields = ['cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand']
     for field in fields:
         state_df['log_'+field] = np.log10(state_df[field])
         state_df[field] = state_df[field].round(2)
     #date = (max(state_dates)-start_of_2020).days
     state_df = state_df.replace([np.inf, -np.inf], np.nan)
-    state_df.to_csv('national_data.csv', columns=['datetime','state','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
-    return state_df
+
+    states = prep_us_data()
+    states = states.append(state_df)
+    #state_df.to_csv('national_data.csv', columns=['datetime','state','population','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
+    states.to_csv('us_data.csv', columns=['datetime','state','population','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
+    return states
 
 def read_UID_codes():
     return pd.read_csv('UID_ISO_FIPS_LookUp_Table.csv')
 
 def prep_county_data():
+    df = pd.DataFrame()
+    UID_df = read_UID_codes()
     county_deaths_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv','time_series_covid19_deaths_US.csv')
     county_cases_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv','time_series_covid19_confirmed_US.csv')
-    print('a work in progress...')
-    uids = county_cases_df['UID'].unique()
-    uid_raw = county_deaths_df.loc[county_deaths_df['UID']==uids[0],[column.endswith('20') for column in county_deaths_df.columns]].transpose()
-    uid_raw = uid_raw.rename(columns={0:"deaths"})
-    uid_raw['UID'] = uids[0]
-    # TODO: add population, per capita, rolling average
+    uids = county_cases_df['FIPS'].unique()
+    for i, uid in enumerate(uids):
+        if np.isnan(uid): continue
+        uid_raw_deaths = county_deaths_df.loc[county_deaths_df['FIPS']==uid,[column.endswith('20') for column in county_deaths_df.columns]].transpose()
+        dfs = pd.DataFrame(index=pd.to_datetime(uid_raw_deaths.index))
+        dfs['cumulative_deaths_per_hundred_thousand'] = uid_raw_deaths / UID_df.loc[UID_df['FIPS']==uid,'Population'].values[0] * 1e5
+        dfs['7day_avg_deaths_per_hundred_thousand'] = (dfs['cumulative_deaths_per_hundred_thousand'] - dfs['cumulative_deaths_per_hundred_thousand'].shift(7)) / 7.
+        dfs['FIPS'] = uid
+        dfs['population'] = UID_df.loc[UID_df['FIPS']==uid,'Population'].values[0]
+        dfs['location'] = UID_df.loc[UID_df['FIPS']==uid,'Combined_Key'].values[0]
+
+        uid_raw_cases = county_cases_df.loc[county_cases_df['FIPS']==uid,[column.endswith('20') for column in county_cases_df.columns]].transpose()
+        dfs2 = pd.DataFrame(index=pd.to_datetime(uid_raw_cases.index))
+        dfs2['cumulative_cases_per_hundred_thousand'] = uid_raw_cases / UID_df.loc[UID_df['FIPS']==uid,'Population'].values[0] * 1e5
+        dfs2['7day_avg_cases_per_hundred_thousand'] = (dfs2['cumulative_cases_per_hundred_thousand'] - dfs2['cumulative_cases_per_hundred_thousand'].shift(7)) / 7.
+        dfs = dfs.join(dfs2)
+        df = df.append(dfs)
+
+    fields = ['cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand']
+    for field in fields:
+        df['log_'+field] = np.log10(df[field])
+    df.to_csv('counties.csv', columns=['location','FIPS','population','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index_label='datetime')
+
+def prep_global_data():
+    df = pd.DataFrame()
+    UID_df = read_UID_codes()
+    global_deaths_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv','time_series_covid19_deaths_global.csv')
+    global_cases_df = read_data('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv','time_series_covid19_confirmed_global.csv')
+    country = global_cases_df['Country/Region'].unique()
+    for i, country in enumerate(country):
+        #if np.isnan(country): continue
+        #if country != 'Canada': continue
+        country_deaths = global_deaths_df.loc[global_deaths_df['Country/Region']==country,[column.endswith('20') for column in global_deaths_df.columns]].transpose()
+        country_deaths = country_deaths.sum(axis=1)
+        dfs = pd.DataFrame(index=pd.to_datetime(country_deaths.index))
+        dfs['cumulative_deaths_per_hundred_thousand'] = country_deaths / UID_df.loc[UID_df['Combined_Key']==country,'Population'].values[0] * 1e5
+        dfs['7day_avg_deaths_per_hundred_thousand'] = (dfs['cumulative_deaths_per_hundred_thousand'] - dfs['cumulative_deaths_per_hundred_thousand'].shift(7)) / 7.
+        dfs['country'] = country
+        dfs['population'] = UID_df.loc[UID_df['Combined_Key']==country,'Population'].values[0]
+        dfs['location'] = UID_df.loc[UID_df['Combined_Key']==country,'iso3'].values[0]
+
+        country_cases = global_cases_df.loc[global_cases_df['Country/Region']==country,[column.endswith('20') for column in global_cases_df.columns]].transpose()
+        country_cases = country_cases.sum(axis=1)
+        dfs2 = pd.DataFrame(index=pd.to_datetime(country_cases.index))
+        dfs2['cumulative_cases_per_hundred_thousand'] = country_cases / UID_df.loc[UID_df['Combined_Key']==country,'Population'].values[0] * 1e5
+        dfs2['7day_avg_cases_per_hundred_thousand'] = (dfs2['cumulative_cases_per_hundred_thousand'] - dfs2['cumulative_cases_per_hundred_thousand'].shift(7)) / 7.
+        dfs = dfs.join(dfs2)
+        df = df.append(dfs)
+
+    fields = ['cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand']
+    for field in fields:
+        df['log_'+field] = np.log10(df[field])
+    df.to_csv('countries.csv', columns=['location','country','population','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index_label='datetime')
+
 
 if __name__ == '__main__':
-    covid_df = prep_us_data()
+    #prep_global_data()
+    #prep_county_data()
+    #covid_df = prep_us_data()
     nat_covid_df = prep_national_data()
-    prep_state_death_histories(covid_df, nat_covid_df)
-    prep_county_data()
+    prep_state_death_histories(nat_covid_df)
