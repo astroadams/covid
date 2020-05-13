@@ -167,7 +167,7 @@ start_of_2020 = datetime(2020,1,1)
 support_counties = False
 support_states = True
 support_history = True
-support_countries = True
+support_countries = False
 
 if support_counties:
     # get shapes of county outlines
