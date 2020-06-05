@@ -30,8 +30,8 @@ def prep_state_death_histories(covid_df):
     df = pd.read_csv('Excess_Deaths_Associated_with_COVID-19.csv')
     df = df[(df['Outcome']=='All causes') & (df['Type']=='Predicted (weighted)')]
     df = df.merge(postal_codes)
-    #df['original_datetime'] = pd.to_datetime(df['Week Ending Date'], format='%m/%d/%Y')
-    df['original_datetime'] = pd.to_datetime(df['Week Ending Date'], format='%Y-%m-%d')
+    df['original_datetime'] = pd.to_datetime(df['Week Ending Date'], format='%m/%d/%Y')
+    #df['original_datetime'] = pd.to_datetime(df['Week Ending Date'], format='%Y-%m-%d')
     df['year'] = pd.DatetimeIndex(df['original_datetime']).year
     df['days_into_year'] = 0
     df['population'] = 0
