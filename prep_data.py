@@ -206,7 +206,7 @@ def prep_us_data():
     fields = ['cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand']
     for field in fields:
         state_df['log_'+field] = np.log10(state_df[field])
-        state_df[field] = state_df[field].round(2)
+        state_df[field] = state_df[field].round(3)
     #date = (max(state_dates)-start_of_2020).days
     state_df = state_df.replace([np.inf, -np.inf], np.nan)
     #state_df.to_csv('us_data.csv', columns=['datetime','state','population','log_cumulative_deaths_per_hundred_thousand','log_cumulative_cases_per_hundred_thousand','log_7day_avg_deaths_per_hundred_thousand','log_7day_avg_cases_per_hundred_thousand','cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand'], index=False)
@@ -233,7 +233,7 @@ def prep_national_data():
     fields = ['cumulative_deaths_per_hundred_thousand','cumulative_cases_per_hundred_thousand','7day_avg_deaths_per_hundred_thousand','7day_avg_cases_per_hundred_thousand']
     for field in fields:
         state_df['log_'+field] = np.log10(state_df[field])
-        state_df[field] = state_df[field].round(2)
+        state_df[field] = state_df[field].round(3)
     #date = (max(state_dates)-start_of_2020).days
     state_df = state_df.replace([np.inf, -np.inf], np.nan)
 
