@@ -94,14 +94,14 @@ def gen_map(date,geography,scaling,current_vs_cumulative,field):
         projection = 'albers usa'
         locations = df['state']
         max_value = state_df[column_string].max()
-        #min_value = state_df[column_string].min()
+        min_value = state_df[column_string].min()
     elif geography == 'world': 
         df = world_df[(world_df['datetime']==datestring) & (world_df[column_string].notnull())]
         locations = df['location']
         locationmode = 'ISO-3'
         projection = 'equirectangular'
         max_value = world_df[column_string].max()
-        #min_value = world_df[column_string].min()
+        min_value = world_df[column_string].min()
     elif geography == 'counties': 
         df = county_df[county_df['datetime']==datestring]
         #locationmode = 'UID'
@@ -110,14 +110,14 @@ def gen_map(date,geography,scaling,current_vs_cumulative,field):
         projection = 'albers usa'
         locations = df['FIPS']
         max_value = county_df[column_string].max()
-        #min_value = county_df[column_string].min()
-    min_value = 0
+        min_value = county_df[column_string].min()
     else:
         raise ValueError('Unrecognized geography %s' % (geography))
     if scaling == 'log':
         tickprefix = '10^'
     else:
         tickprefix = ''
+        min_value = 0
     if geography == 'states' or geography == 'world':
         data = [go.Choropleth(
                 locations = locations,
