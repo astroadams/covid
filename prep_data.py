@@ -310,5 +310,6 @@ if __name__ == '__main__':
     #prep_global_data()
     #prep_county_data()
     #covid_df = prep_us_data()
+    print('Updating data')
     nat_covid_df = prep_national_data()
     prep_state_death_histories(nat_covid_df)
