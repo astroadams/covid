@@ -106,8 +106,10 @@ def plot_state_death_histories():
             dff = df[(df['year']==year) & (df['State']==state)]
             sdff = dff.sort_values(by='days_into_year')
             if year == 2020:
-                if (state in ['Alaska','Connecticut','Louisiana','North Carolina','Ohio','Virginia','West Virginia']):
-                    trim = -5
+                if (state in ['Alaska','Connecticut','Louisiana','Ohio','Virginia','West Virginia']):
+                    trim = -4
+                elif (state in ['North Carolina']):
+                    trim = -6
                 else:
                     trim = -2
                 color='red'
