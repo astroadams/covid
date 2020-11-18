@@ -12,7 +12,7 @@ def download_data(url,filename):
         st = os.stat(filename)
         age_hours = (time.time()-st.st_mtime) / 3600.
     # download new data if data is more than X hours old
-    if age_hours > 0.1:
+    if age_hours > 0.001:
         myfile = requests.get(url, allow_redirects=True)
         open(filename, 'wb').write(myfile.content)
 
