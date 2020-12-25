@@ -89,7 +89,8 @@ def prep_state_death_histories(covid_df):
     #columns_to_print.extend([state+'_typical_plus_covid_daily_deaths_per_hundred_thousand' for state in df['Code'].unique()])
     columns_to_print = [state+'_typical_plus_covid_daily_deaths_per_hundred_thousand' for state in df['Code'].unique()]
     columns_to_print.append('datetime')
-    df_avg.to_csv('us_typical_deaths.csv', columns=columns_to_print, index_label='days_into_year')
+    #df_avg.to_csv('us_typical_deaths.csv', columns=columns_to_print, index_label='days_into_year')
+    df_avg.to_csv('us_typical_deaths.csv', index_label='days_into_year')
 
 
 def plot_state_death_histories():
